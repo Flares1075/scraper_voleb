@@ -4,15 +4,25 @@ from urllib.parse import urljoin
 import sys
 
 def get_page(link):
-    print("getting:", link)
+    print("getting", link)
     # get the page and make it work-with-able
     page = bs(req.get(link).text, features="html.parser")
     print("success")
     return page
 
+def count_results(results_page):
+    print("counting results")
+    return
+
+
+##################################################################################################
+
+
 if len(sys.argv) < 3:
     print("Je zapotřebí zadat odkaz na územní celek a název výstupního souboru")
     sys.exit(1)
+
+rows = []
 
 main_link = sys.argv[1]
 main_page = get_page(sys.argv[1])
@@ -42,10 +52,14 @@ for link in links:
     page = get_page(urljoin(main_link, link))
     if page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku":
         print("\"výběr okrsku\" detected")
-        # click through the numbers -> count results
+        # this loop is very similar to "for tag in main_page..."
+        for tag in page.find_all('td', {'class' : 'cislo'}):
+            #print(tag.findChildren()[0]["href"])
+            count_results(get_page(urljoin(main_link, tag.findChildren()[0]["href"])))
     elif page.find("h2").text.strip() == "Výsledky hlasování za územní celky":
         print("results detected")
         # count results
     else:
-        print("oh no")
-        sys.exit(1)
+        print("ERROR")
+        print(page)
+        continue
