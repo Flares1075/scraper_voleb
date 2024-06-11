@@ -2,6 +2,7 @@ import requests as req
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin
 from time import sleep
+from random import choice
 import sys
 
 def get_page(link):
@@ -18,7 +19,7 @@ def get_page(link):
         except req.exceptions.ConnectionError:
             print("Connection refused, sleeping for", 10 * pokus)
             sleep(10 * pokus)
-    print("oh no")
+    print("ERROR - get_page unsuccessful")
     return
 
 def count_results(results_page):
@@ -32,8 +33,6 @@ def count_results(results_page):
 if len(sys.argv) < 3:
     print("Je zapotřebí zadat odkaz na územní celek a název výstupního souboru")
     sys.exit(1)
-
-rows = []
 
 main_link = sys.argv[1]
 main_page = get_page(sys.argv[1])
@@ -57,12 +56,38 @@ for tag in main_page.find_all('td', {'class' : 'center'}):
     links.append(children[0]['href'])
     #print("tag:", tag, "childern:", children)
 
-print("links:", links)
+#print("links:", links)
+
+# first row should be headers then data
+rows = []
+# headers are: "kód obce", "název obce", "voliči v seznamu", "vydané obálky", "platné hlasy", party names
+# party names should be scraped, everthing else can be hardcoded
+# a random page will be selected and the party name will be taken from there
+# definetly not the most "optimální" way but it is simple
+page = get_page(urljoin(main_link, choice(links)))
+# some pages show results, some devide into "okrsky"
+# same thing is below
+if page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku":
+    page = get_page(urljoin(main_link, choice(page.find_all('td', {'class' : 'cislo'})).findChildren()[0]["href"])) ### what did I just write
+elif page.find("h2").text.strip() == "Výsledky hlasování za územní celky":
+    pass
+else:
+    print("ERROR - page not recongnised")
+    #print(page)
+
+headers = ["kód obce", "název obce", "okrsek", "voliči v seznamu", "vydané obálky", "platné hlasy"]
+for party_name in page.find_all("td", {"class" : "overflow_name"}):
+    headers.append(party_name.text)
+
+rows.append(headers)
+print(headers)
+print(rows[0])
 
 for link in links:
     page = get_page(urljoin(main_link, link))
+    # some pages show results, some devide into "okrsky"
     if page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku":
-        print("\"výběr okrsku\" detected")
+        # print("\"výběr okrsku\" detected")
         # this loop is very similar to "for tag in main_page..."
         for tag in page.find_all('td', {'class' : 'cislo'}):
             #print(tag.findChildren()[0]["href"])
@@ -71,6 +96,6 @@ for link in links:
         # print("results detected")
         count_results(page)
     else:
-        print("ERROR")
-        print(page)
+        print("ERROR - page not recongnised")
+        #print(page)
         continue
