@@ -1,11 +1,11 @@
 import requests as req
 from bs4 import BeautifulSoup as bs
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, parse_qs
 from time import sleep
 from random import choice
 import sys
 
-def get_page(link):
+def get_page(link: str):
     # exceptions often thrown becouse of "MaxRetryError"
     # try to get page if refused sleep 10s if refused again sleep 20s... up to a minute
     # else "oh no"
@@ -22,9 +22,39 @@ def get_page(link):
     print("ERROR - get_page unsuccessful")
     return
 
-def count_results(results_page):
-    print("counting results")
-    return
+
+# returns row of data for "rows" list
+# row should be: "kód obce", "název obce", "okrsek", "voliči v seznamu", "vydané obálky", "platné hlasy", party results
+# params page with results and the page url literally only for "kód obce" that isn't on the results page anywhere but is in the URL
+### it would probably be better if it just got the link, and then called get_page itself
+def count_results(results_page: bs, link: str):
+    print("counting results from", link)
+    row = []
+    # get kód obece from the url, inspiration here: https://stackoverflow.com/questions/5074803/retrieving-parameters-from-a-url
+    row.append(parse_qs(urlparse(link).query)["xobec"][0])
+    # název obce
+    for h3 in results_page.find_all("h3"):
+        if "Obec:" in h3.text:
+            row.append(h3.text.strip()[6:])
+            break
+    # okresek (appears only sometimes) is actually also in the URL, hooray
+    try:
+        row.append(parse_qs(urlparse(link).query)["xokrsek"][0])
+    except KeyError:
+        row.append("N/A")
+    # voliči v seznamu
+    row.append(results_page.find("td", {"headers": "sa2"}).text)
+    # vydané obálky
+    row.append(results_page.find("td", {"headers": "sa3"}).text)
+    # platné hlasy
+    row.append(results_page.find("td", {"headers": "sa6"}).text)
+    # party results
+    for result in results_page.find_all(
+        "td", {"headers": "t1sa2 t1sb3"}
+    ) + results_page.find_all("td", {"headers": "t2sa2 t2sb3"}):
+        row.append(result.text)
+    # print(row)
+    return row
 
 
 ##################################################################################################
@@ -51,16 +81,14 @@ links = []
 # then get the childern of that tag (should be only an "a" tag)
 # and put the url inside href into list "links"
 # inspiration here: https://stackoverflow.com/questions/44958587/python-beautifulsoup-get-tag-within-a-tag
-for tag in main_page.find_all('td', {'class' : 'center'}):
+for tag in main_page.find_all("td", {"class": "center"}):
     children = tag.findChildren()
-    links.append(children[0]['href'])
-    #print("tag:", tag, "childern:", children)
-
-#print("links:", links)
+    links.append(children[0]["href"])
+    # print("tag:", tag, "childern:", children)
 
 # first row should be headers then data
 rows = []
-# headers are: "kód obce", "název obce", "voliči v seznamu", "vydané obálky", "platné hlasy", party names
+# headers are: "kód obce", "název obce", "okrsek", "voliči v seznamu", "vydané obálky", "platné hlasy", party names
 # party names should be scraped, everthing else can be hardcoded
 # a random page will be selected and the party name will be taken from there
 # definetly not the most "optimální" way but it is simple
@@ -68,34 +96,46 @@ page = get_page(urljoin(main_link, choice(links)))
 # some pages show results, some devide into "okrsky"
 # same thing is below
 if page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku":
-    page = get_page(urljoin(main_link, choice(page.find_all('td', {'class' : 'cislo'})).findChildren()[0]["href"])) ### what did I just write
+    page = get_page(
+        urljoin(
+            main_link,
+            choice(page.find_all("td", {"class": "cislo"})).findChildren()[0]["href"],
+        )
+    )  ### what did I just write
 elif page.find("h2").text.strip() == "Výsledky hlasování za územní celky":
     pass
 else:
     print("ERROR - page not recongnised")
-    #print(page)
 
-headers = ["kód obce", "název obce", "okrsek", "voliči v seznamu", "vydané obálky", "platné hlasy"]
-for party_name in page.find_all("td", {"class" : "overflow_name"}):
+headers = [
+    "kód obce",
+    "název obce",
+    "okrsek",
+    "voliči v seznamu",
+    "vydané obálky",
+    "platné hlasy",
+]
+for party_name in page.find_all("td", {"class": "overflow_name"}):
     headers.append(party_name.text)
 
 rows.append(headers)
-print(headers)
-print(rows[0])
 
 for link in links:
     page = get_page(urljoin(main_link, link))
     # some pages show results, some devide into "okrsky"
-    if page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku":
-        # print("\"výběr okrsku\" detected")
+    if (
+        page.find("h2").text.strip() == "Výsledky hlasování za územní celky – výběr okrsku"
+    ):
         # this loop is very similar to "for tag in main_page..."
-        for tag in page.find_all('td', {'class' : 'cislo'}):
-            #print(tag.findChildren()[0]["href"])
-            count_results(get_page(urljoin(main_link, tag.findChildren()[0]["href"])))
+        for tag in page.find_all("td", {"class": "cislo"}):
+            rows.append(
+                count_results(
+                    get_page(urljoin(main_link, tag.findChildren()[0]["href"])),
+                    urljoin(main_link, tag.findChildren()[0]["href"]),
+                )
+            )
     elif page.find("h2").text.strip() == "Výsledky hlasování za územní celky":
-        # print("results detected")
-        count_results(page)
+        rows.append(count_results(page, urljoin(main_link, link)))
     else:
         print("ERROR - page not recongnised")
-        #print(page)
         continue
