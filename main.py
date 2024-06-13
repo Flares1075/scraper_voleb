@@ -4,6 +4,7 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from time import sleep
 from random import choice
 import sys
+import csv
 
 def get_page(link: str):
     # exceptions often thrown becouse of "MaxRetryError"
@@ -139,3 +140,7 @@ for link in links:
     else:
         print("ERROR - page not recongnised")
         continue
+
+with open(sys.argv[2], 'w', newline="") as csvfile:
+    csvwriter = csv.writer(csvfile)
+    csvwriter.writerows(rows)
